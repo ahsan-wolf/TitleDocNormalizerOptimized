@@ -17,7 +17,7 @@ public static class Program
         if (!args[0].Equals("normalize", StringComparison.OrdinalIgnoreCase))
         {
             Console.Error.WriteLine("Unknown command. Use: normalize <pdf-file> -o <output-folder>");
-            return 2;
+            return 2; 
         }
 
         var options = CliOptions.Parse(args.Skip(1).ToArray());
