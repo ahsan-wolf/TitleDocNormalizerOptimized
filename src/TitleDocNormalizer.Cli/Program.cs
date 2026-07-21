@@ -29,7 +29,23 @@ public static class Program
 
         Directory.CreateDirectory(options.OutputFolder);
 
-        IPageTextExtractor extractor = new PdfPigPageTextExtractor();
+        IOcrEngine? ocrEngine = null;
+        if (options.Ocr)
+        {
+            try
+            {
+                ocrEngine = new TesseractOcrEngine(options.TessDataPath);
+            }
+            catch (FileNotFoundException ex)
+            {
+                Console.Error.WriteLine(ex.Message);
+                return 2;
+            }
+        }
+
+        using var ocrEngineDisposable = ocrEngine;
+
+        IPageTextExtractor extractor = new PdfPigPageTextExtractor(ocrEngine);
         var pipeline = new NormalizationPipeline(
             extractor,
             new TextNormalizer(),
@@ -37,22 +53,26 @@ public static class Program
             new TitlePageClassifier(),
             new SectionExtractor(),
             new FieldRouter(),
+            new ConfidentialFieldRedactor(),
             new PromptBuilder(),
             new OutputWriter());
 
         var result = await pipeline.RunAsync(options);
 
+        var filePrefix = Path.GetFileNameWithoutExtension(options.InputPdf!);
+
         Console.WriteLine($"Done. Pages: {result.Manifest.Pages.Count}");
         Console.WriteLine($"Output: {Path.GetFullPath(options.OutputFolder)}");
-        Console.WriteLine($"Manifest: {Path.Combine(options.OutputFolder, "manifest.json")}");
+        Console.WriteLine($"Manifest: {Path.Combine(options.OutputFolder, $"{filePrefix}_manifest.json")}");
+        Console.WriteLine($"Field mapping: {Path.Combine(options.OutputFolder, $"{filePrefix}_field_mapping.json")}");
 
         if (options.Extract)
         {
-            var promptPath = Path.Combine(options.OutputFolder, "prompts", "field_extraction_prompt.md");
+            var promptPath = Path.Combine(options.OutputFolder, "prompts", $"{filePrefix}_field_extraction_prompt.md");
             var prompt = await File.ReadAllTextAsync(promptPath);
             var ollama = new OllamaClient(options.OllamaUrl);
             var json = await ollama.GenerateAsync(options.Model, prompt, options.OllamaTimeoutSeconds);
-            var output = Path.Combine(options.OutputFolder, "extraction_result.json");
+            var output = Path.Combine(options.OutputFolder, $"{filePrefix}_extraction_result.json");
             await File.WriteAllTextAsync(output, json);
             Console.WriteLine($"Extraction result: {output}");
         }
@@ -75,6 +95,15 @@ Options:
   --model               Ollama model name. Default: qwen2.5:7b
   --ollama-url          Ollama URL. Default: http://localhost:11434
   --max-pages-per-field Maximum routed pages per field. Default: 4
+  --ocr                 Run OCR (Tesseract) on pages with no extractable text
+                        (e.g. scanned Schedule A/B images).
+  --tessdata-path       Folder containing <lang>.traineddata. Default: tessdata
+
+Confidential fields (Policy Amount, Amount of Insurance, Premium, Lender,
+Underwriter) are replaced with dummy values in every output file. The
+original-to-dummy mapping is saved to <prefix>_field_mapping.json, where
+<prefix> is the input PDF's file name. All output files are prefixed the
+same way.
 
 Examples:
   dotnet run --project src/TitleDocNormalizer.Cli -- normalize policy.pdf -o out --prompt
@@ -91,7 +120,9 @@ public sealed record CliOptions(
     string Model,
     string OllamaUrl,
     int MaxPagesPerField,
-    int OllamaTimeoutSeconds)
+    int OllamaTimeoutSeconds,
+    bool Ocr,
+    string TessDataPath)
 {
     public static CliOptions Parse(string[] args)
     {
@@ -103,6 +134,8 @@ public sealed record CliOptions(
         string ollamaUrl = "http://localhost:11434";
         int maxPages = 4;
         int timeout = 300;
+        bool ocr = false;
+        string tessDataPath = "tessdata";
 
         for (int i = 0; i < args.Length; i++)
         {
@@ -131,9 +164,15 @@ public sealed record CliOptions(
                 case "--ollama-timeout-seconds":
                     timeout = int.Parse(args[++i]);
                     break;
+                case "--ocr":
+                    ocr = true;
+                    break;
+                case "--tessdata-path":
+                    tessDataPath = args[++i];
+                    break;
             }
         }
 
-        return new CliOptions(input, output, prompt, extract, model, ollamaUrl, maxPages, timeout);
+        return new CliOptions(input, output, prompt, extract, model, ollamaUrl, maxPages, timeout, ocr, tessDataPath);
     }
 }
