@@ -54,3 +54,15 @@ public sealed record NormalizationManifest(
     string Notes);
 
 public sealed record PipelineResult(NormalizationManifest Manifest, IReadOnlyList<FieldRoute> Routes);
+
+public sealed record RedactionMapping(
+    string FieldName,
+    string OriginalValue,
+    string DummyValue,
+    IReadOnlyList<int> PageNumbers);
+
+public sealed record RedactionResult(
+    IReadOnlyList<ClassifiedPage> Pages,
+    IReadOnlyList<DocumentSection> Sections,
+    IReadOnlyList<FieldRoute> Routes,
+    IReadOnlyList<RedactionMapping> Mappings);
