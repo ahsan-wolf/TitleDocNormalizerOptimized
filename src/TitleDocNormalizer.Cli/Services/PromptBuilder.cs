@@ -5,11 +5,11 @@ namespace TitleDocNormalizer.Cli.Services;
 
 public sealed class PromptBuilder
 {
-    public string BuildStrictJsonPrompt(IReadOnlyList<FieldRoute> routes)
+    public string BuildStrictJsonPrompt(IReadOnlyList<ClassifiedPage> pages, IReadOnlyList<FieldRoute> routes)
     {
         var sb = new StringBuilder();
         sb.AppendLine("You are extracting fields from normalized title-industry policy documents.");
-        sb.AppendLine("Use only the provided routed text. Do not guess. If a field is not present, return null.");
+        sb.AppendLine("Use only the provided source pages. Do not guess. If a field is not present, return null.");
         sb.AppendLine("Return strict JSON only. No markdown. No explanation.");
         sb.AppendLine();
         sb.AppendLine("Required JSON schema:");
@@ -21,13 +21,26 @@ public sealed class PromptBuilder
         sb.AppendLine("  \"warnings\": []");
         sb.AppendLine("}");
         sb.AppendLine();
-        sb.AppendLine("Routed source text:");
-
+        sb.AppendLine("Field candidate pages:");
         foreach (var route in routes)
         {
-            sb.AppendLine($"\n--- FIELD ROUTE: {route.FieldName} ---");
-            sb.AppendLine($"Candidate pages: {string.Join(", ", route.PageNumbers)}");
-            sb.AppendLine(route.RoutedText);
+            sb.AppendLine($"- {route.FieldName}: pages {string.Join(", ", route.PageNumbers)}");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("Source pages (each page listed once, even if used by multiple fields):");
+
+        var pageLookup = pages.ToDictionary(p => p.PageNumber);
+        var referencedPageNumbers = routes
+            .SelectMany(r => r.PageNumbers)
+            .Distinct()
+            .Order();
+
+        foreach (var pageNumber in referencedPageNumbers)
+        {
+            if (!pageLookup.TryGetValue(pageNumber, out var page)) continue;
+            sb.AppendLine($"\n--- PAGE {pageNumber} [{page.Kind}] ---");
+            sb.AppendLine(page.Text);
         }
 
         return sb.ToString();
