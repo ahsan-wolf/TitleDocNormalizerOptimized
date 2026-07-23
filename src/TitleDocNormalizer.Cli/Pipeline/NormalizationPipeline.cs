@@ -59,7 +59,7 @@ public sealed class NormalizationPipeline(
 
         if (options.GeneratePrompt)
         {
-            var prompt = promptBuilder.BuildStrictJsonPrompt(routes);
+            var prompt = promptBuilder.BuildStrictJsonPrompt(classifiedPages, routes);
             var promptDir = Path.Combine(options.OutputFolder, "prompts");
             Directory.CreateDirectory(promptDir);
             await File.WriteAllTextAsync(Path.Combine(promptDir, $"{filePrefix}_field_extraction_prompt.md"), prompt, cancellationToken);

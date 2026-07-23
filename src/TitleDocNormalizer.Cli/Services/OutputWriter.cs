@@ -55,12 +55,26 @@ public sealed class OutputWriter
         }
 
         var routedAll = new StringBuilder();
+        routedAll.AppendLine("# Field candidate pages");
         foreach (var route in routes)
         {
             var path = Path.Combine(chunksDir, Prefixed($"{route.FieldName}.md"));
             await File.WriteAllTextAsync(path, route.RoutedText, cancellationToken);
-            routedAll.AppendLine($"\n# Field route: {route.FieldName}");
-            routedAll.AppendLine(route.RoutedText);
+            routedAll.AppendLine($"- {route.FieldName}: pages {string.Join(", ", route.PageNumbers)}");
+        }
+
+        routedAll.AppendLine("\n# Source pages (each page listed once, even if used by multiple fields)");
+        var pageLookup = classifiedPages.ToDictionary(p => p.PageNumber);
+        var referencedPageNumbers = routes
+            .SelectMany(r => r.PageNumbers)
+            .Distinct()
+            .Order();
+
+        foreach (var pageNumber in referencedPageNumbers)
+        {
+            if (!pageLookup.TryGetValue(pageNumber, out var page)) continue;
+            routedAll.AppendLine($"\n## Page {pageNumber} [{page.Kind}]");
+            routedAll.AppendLine(page.Text);
         }
 
         await File.WriteAllTextAsync(Path.Combine(outputFolder, Prefixed("routed_llm_input.md")), routedAll.ToString().Trim(), cancellationToken);
